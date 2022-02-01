@@ -1,5 +1,7 @@
-import { Component, State, h } from '@stencil/core';
+import { Component, Prop, State, h } from '@stencil/core';
+import { MatchResults } from '@stencil/router';
 import { database } from '../../data/database';
+import { Business } from '../../data/business';
 
 @Component({
   tag: 'business-detail-page',
@@ -7,22 +9,23 @@ import { database } from '../../data/database';
   shadow: true,
 })
 export class BusinessDetailPage {
-  @State() business: string;
+  @Prop() match: MatchResults;
+  @State() business: Business;
 
   componentWillLoad() {
-    this.business = database.business;
-    database.onBusinessChanged(() => this.business = database.business);
+    this.business = database.getBusiness(this.match?.params?.key);
+    database.onBusinessChanged(() => this.business = database.getBusiness(this.match?.params?.key));
   }
 
   render() {
     return (
-      <div class="app-home">
-        <p>
-          Name=<input type="text" value={this.business} onInput={e => database.setBusiness((e.target as HTMLInputElement).value)} readonly={database.readonly} />
-        </p>
-        <p>
-          Address={database.myStore.address.toString()}
-        </p>
+      <div>
+        {['Name', 'Description', 'Icon', 'Url', 'Tel', 'Address'].map(p => <p>
+          {p}=<input type="text" value={this.business?.[p.toLowerCase()]} onInput={e => database.setBusiness({[p.toLowerCase()]: (e.target as HTMLInputElement).value})} readonly={database.readonly}/>
+        </p>)}
+        {['Longitude', 'Latitude'].map(p => <p>
+          {p}=<input type="text" value={(this.business?.[p.toLowerCase()] || 0).toString()} onInput={e => database.setBusiness({[p.toLowerCase()]: parseFloat((e.target as HTMLInputElement).value)})} readonly={database.readonly}/>
+        </p>)}
       </div>
     );
   }
