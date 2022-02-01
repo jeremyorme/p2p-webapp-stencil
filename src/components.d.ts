@@ -5,62 +5,59 @@
  * It contains typing information for all components that exist in this project.
  */
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
-import { MatchResults } from "@stencil/router";
 export namespace Components {
-    interface AppHome {
-    }
-    interface AppProfile {
-        "match": MatchResults;
-    }
     interface AppRoot {
+    }
+    interface BusinessDetailPage {
+    }
+    interface BusinessListPage {
     }
 }
 declare global {
-    interface HTMLAppHomeElement extends Components.AppHome, HTMLStencilElement {
-    }
-    var HTMLAppHomeElement: {
-        prototype: HTMLAppHomeElement;
-        new (): HTMLAppHomeElement;
-    };
-    interface HTMLAppProfileElement extends Components.AppProfile, HTMLStencilElement {
-    }
-    var HTMLAppProfileElement: {
-        prototype: HTMLAppProfileElement;
-        new (): HTMLAppProfileElement;
-    };
     interface HTMLAppRootElement extends Components.AppRoot, HTMLStencilElement {
     }
     var HTMLAppRootElement: {
         prototype: HTMLAppRootElement;
         new (): HTMLAppRootElement;
     };
+    interface HTMLBusinessDetailPageElement extends Components.BusinessDetailPage, HTMLStencilElement {
+    }
+    var HTMLBusinessDetailPageElement: {
+        prototype: HTMLBusinessDetailPageElement;
+        new (): HTMLBusinessDetailPageElement;
+    };
+    interface HTMLBusinessListPageElement extends Components.BusinessListPage, HTMLStencilElement {
+    }
+    var HTMLBusinessListPageElement: {
+        prototype: HTMLBusinessListPageElement;
+        new (): HTMLBusinessListPageElement;
+    };
     interface HTMLElementTagNameMap {
-        "app-home": HTMLAppHomeElement;
-        "app-profile": HTMLAppProfileElement;
         "app-root": HTMLAppRootElement;
+        "business-detail-page": HTMLBusinessDetailPageElement;
+        "business-list-page": HTMLBusinessListPageElement;
     }
 }
 declare namespace LocalJSX {
-    interface AppHome {
-    }
-    interface AppProfile {
-        "match"?: MatchResults;
-    }
     interface AppRoot {
     }
+    interface BusinessDetailPage {
+    }
+    interface BusinessListPage {
+    }
     interface IntrinsicElements {
-        "app-home": AppHome;
-        "app-profile": AppProfile;
         "app-root": AppRoot;
+        "business-detail-page": BusinessDetailPage;
+        "business-list-page": BusinessListPage;
     }
 }
 export { LocalJSX as JSX };
 declare module "@stencil/core" {
     export namespace JSX {
         interface IntrinsicElements {
-            "app-home": LocalJSX.AppHome & JSXBase.HTMLAttributes<HTMLAppHomeElement>;
-            "app-profile": LocalJSX.AppProfile & JSXBase.HTMLAttributes<HTMLAppProfileElement>;
             "app-root": LocalJSX.AppRoot & JSXBase.HTMLAttributes<HTMLAppRootElement>;
+            "business-detail-page": LocalJSX.BusinessDetailPage & JSXBase.HTMLAttributes<HTMLBusinessDetailPageElement>;
+            "business-list-page": LocalJSX.BusinessListPage & JSXBase.HTMLAttributes<HTMLBusinessListPageElement>;
         }
     }
 }
