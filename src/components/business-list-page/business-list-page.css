@@ -1,3 +1,91 @@
-:host {
+*, *:before, *:after {
+  box-sizing: border-box;
+}
+
+h1 {
+  width: 100%;
+  background-color: aliceblue;
+  text-align: center;
+  padding: 100px 0;
+  margin: 0;
+  font-size: 60px;
+  color: royalblue;
+}
+
+h2 {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 1200px;
+  color: dodgerblue;
+  font-size: 40px;
+  margin-top: 60px;
+  padding-left: 2%;
+}
+
+ul {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 1200px;
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+ul > li {
+  display: inline-block;
+  width: 46%;
+  margin: 2%;
+}
+
+ul > li > a {
+  width: 100%;
   display: block;
+  text-align: center;
+  font-size: 18px;
+  margin: 0;
+  background-color: white;
+  font-weight: bold;
+  padding: 20px 10px;
+}
+
+a {
+  display: inline-block;
+  background-color: aliceblue;
+  padding: 20px 40px;
+  text-decoration: none;
+  color: #333;
+  border-style: solid;
+  border-color: darkgray;
+  border-width: 1px;
+  border-radius: 5px;
+}
+
+input {
+  display: inline-block;
+  margin: 20px 4% 20px 2%;
+  font-size: 18px;
+  width: 46%;
+  padding: 20px;
+}
+
+p {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 1200px;
+}
+
+@media only screen and (max-width: 478px) {
+  h1 {
+    font-size: 50px;
+  }
+
+  h2 {
+    font-size: 30px;
+  }
+
+  ul > li {
+    width: 96%;
+  }
 }

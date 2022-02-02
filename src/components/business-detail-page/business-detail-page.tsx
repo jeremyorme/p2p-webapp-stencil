@@ -16,12 +16,14 @@ export class BusinessDetailPage {
 
   render() {
     return (
-      <div class="app-home">
+      <div>
+        <h1>Business</h1>
+        <h2>Details</h2>
         <p>
-          Name=<input type="text" value={this.business} onInput={e => database.setBusiness((e.target as HTMLInputElement).value)} readonly={database.readonly} />
+          Name<input type="text" value={this.business} onInput={e => database.setBusiness((e.target as HTMLInputElement).value)} readonly={database.readonly} />
         </p>
         <p>
-          Address={database.myStore.address.toString()}
+          Address<input type="text" value={database.myStore.address.toString()} readonly={true} />
         </p>
       </div>
     );
