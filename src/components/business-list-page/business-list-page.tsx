@@ -12,11 +12,15 @@ export class BusinessListPage {
   render() {
     return (
       <div>
+        <h1>Businesses</h1>
+        <h2>My businesses</h2>
         <ul>
           {database.getKeyedBusinesses().map(kb => <li><a href={'./my-business/' + kb.key +'/'}>{kb.business.name}</a></li>)}
         </ul>
-        <input value={this.newBusinessKey} onInput={e => this.newBusinessKey = (e.target as HTMLInputElement).value}/>
-        <a href={'./my-business/' + this.newBusinessKey + '/'}>New</a>
+        <p>
+          <input value={this.newBusinessKey} onInput={e => this.newBusinessKey = (e.target as HTMLInputElement).value}/>
+          <a href={'./my-business/' + this.newBusinessKey + '/'}>New</a>
+        </p>
       </div>
     );
   }
