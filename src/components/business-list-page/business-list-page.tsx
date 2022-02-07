@@ -21,6 +21,11 @@ export class BusinessListPage {
           <input value={this.newBusinessKey} onInput={e => this.newBusinessKey = (e.target as HTMLInputElement).value}/>
           <a href={'./my-business/' + this.newBusinessKey + '/'}>New</a>
         </p>
+
+        <h2>Other businesses</h2>
+        <ul>
+          {database.getOtherBusinesses().map(ob => <li><a href={'./business/' + ob.id + '/' + ob.key + '/'}>{ob.business.name}</a></li>)}
+        </ul>
       </div>
     );
   }

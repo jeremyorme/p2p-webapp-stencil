@@ -13,3 +13,9 @@ export interface KeyedBusiness {
   key: string,
   business: Business
 }
+
+export interface OtherBusiness {
+  id: string;
+  key: string;
+  business: Business;
+}

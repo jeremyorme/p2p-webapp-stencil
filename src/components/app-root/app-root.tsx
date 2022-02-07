@@ -23,6 +23,7 @@ export class AppRoot {
             <stencil-route-switch scrollTopOffset={0}>
               <stencil-route url="/" component="business-list-page" exact={true} />
               <stencil-route url="/my-business/:key/" component="business-detail-page" />
+              <stencil-route url="/business/:storeId/:key/" component="business-detail-page" />
             </stencil-route-switch>
           </stencil-router>
         </main>

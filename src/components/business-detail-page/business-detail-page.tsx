@@ -13,8 +13,8 @@ export class BusinessDetailPage {
   @State() business: Business;
 
   componentWillLoad() {
-    this.business = database.getBusiness(this.match?.params?.key);
-    database.onBusinessChanged(() => this.business = database.getBusiness(this.match?.params?.key));
+    this.business = database.getBusiness(this.match?.params?.storeId, this.match?.params?.key);
+    database.onBusinessChanged(() => this.business = database.getBusiness(this.match?.params?.storeId, this.match?.params?.key));
   }
 
   render() {
