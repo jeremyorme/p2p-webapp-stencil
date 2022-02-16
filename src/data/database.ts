@@ -28,7 +28,7 @@ class Database {
   
   async _initMyStore() {
     // Create/open a key-value store called 'business' and load its data
-    this.myStore = await this.orbitdb.keyvalue('/orbitdb/zdpuArKucyWfv55WCeJyEmEmFLq1Mt7UX4GTyLDMsJZNsrnQh/business');
+    this.myStore = await this.orbitdb.keyvalue('business');
     await this.myStore.load();
     this.myStoreId = this.myStore.address.toString().split('/')[2];
 
