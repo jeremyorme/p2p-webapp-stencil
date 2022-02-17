@@ -11,6 +11,7 @@ class Database {
   publicStore: any;
   businessStores: Map<string, any> = new Map();
   businesses: Map<string, KeyedBusiness[]> = new Map();
+  myStoreRegistered: boolean = false;
   myStoreId: string;
 
   onBusinessChanged(callback: any) {
@@ -49,8 +50,10 @@ class Database {
       return;
 
     // Don't include our own store in the other businesses
-    if (businessStoreId == this.myStoreId)
+    if (businessStoreId == this.myStoreId) {
+      this.myStoreRegistered = true;
       return;
+    }
 
     // Open a key-value store called 'business' with supplied id and load its data
     const businessStore = await this.orbitdb.keyvalue('/orbitdb/' + businessStoreId + '/business');
@@ -81,12 +84,9 @@ class Database {
   }
 
   async _registerMyStore() {
-    // If we have already registered our store then skip
-    if (this.businessStores.has(this.myStoreId))
-      return;
-
-    // Add to public store and load
-    await this.publicStore.add(this.myStoreId);
+    // Register our own store if we haven't already done so
+    if (!this.myStoreRegistered)
+      await this.publicStore.add(this.myStoreId);
   }
 
   async init() {
