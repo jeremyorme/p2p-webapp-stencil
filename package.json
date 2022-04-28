@@ -18,5 +18,9 @@
     "jest-cli": "^27.4.5",
     "puppeteer": "^10.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ipfs-pubsub-peer-monitor": "^0.0.10",
+    "orbit-db-io": "^1.0.2"
+  }
 }
