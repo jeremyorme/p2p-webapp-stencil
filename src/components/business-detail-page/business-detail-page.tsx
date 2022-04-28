@@ -20,7 +20,7 @@ export class BusinessDetailPage {
   render() {
     return (
       <div>
-        <h1>{this.business.name}</h1>
+        <h1>{this.business?.name}</h1>
         <h2>Details</h2>
         {['Name', 'Description', 'Icon', 'Url', 'Tel', 'Address'].map(p => <p>
           {p}<input type="text" value={this.business?.[p.toLowerCase()]} onInput={e => database.setBusiness({[p.toLowerCase()]: (e.target as HTMLInputElement).value})} readonly={database.readonly}/>
