@@ -1,6 +1,8 @@
 import {read, write} from 'orbit-db-io';
 import IpfsPubsubPeerMonitor from 'ipfs-pubsub-peer-monitor';
+import Ajv, {JTDSchemaType} from 'ajv/dist/jtd';
 
+const ajv = new Ajv();
 const Ipfs = window['Ipfs'];
 const OrbitDB = window['OrbitDB'];
 
@@ -8,7 +10,7 @@ async function ipfsPut(ipfs: any, value: any): Promise<string> {
   return write(ipfs, 'dag-pb', value);
 }
 
-async function ipfsGet<T>(ipfs: any, cid: string): Promise<T> {
+async function ipfsGet<T>(ipfs: any, cid: string): Promise<T|null> {
   try {
     return (await read(ipfs, cid, {timeout: 10000}));
   }
@@ -38,14 +40,49 @@ interface IStoreManifest {
   ownerIdentity: string;
 }
 
+const storeManifestSchema: JTDSchemaType<IStoreManifest> = {
+  properties: {
+    name: { type: 'string' },
+    ownerIdentity: { type: 'string' }
+  }
+};
+
+const validateStoreManifest = ajv.compile(storeManifestSchema);
+
+interface IObject {
+  _id: string;
+}
+
+const objectSchema: JTDSchemaType<IObject> = {
+  properties: {
+    _id: { type: 'string' }
+  },
+  additionalProperties: true  
+}
+
 interface IEntry {
-  value: any;
+  value: IObject;
   clock: number;
 }
+
+const entrySchema: JTDSchemaType<IEntry> = {
+  properties: {
+    value: objectSchema,
+    clock: { type: 'uint32' }
+  }
+};
 
 interface IEntryBlock {
   entries: IEntry[];
 }
+
+const entryBlockSchema: JTDSchemaType<IEntryBlock> = {
+  properties: {
+    entries: { elements: entrySchema }
+  }
+};
+
+const validateEntryBlock = ajv.compile(entryBlockSchema);
 
 interface IEntryBlockList {
   ownerIdentity: string;
@@ -55,6 +92,16 @@ interface IEntryBlockList {
   signature: string;
 }
 
+const entryBlockListSchema: JTDSchemaType<IEntryBlockList> = {
+  properties: {
+    ownerIdentity: { type: 'string' },
+    entryBlockCids: { elements: { type: 'string' } },
+    clock: { type: 'uint32' },
+    publicKey: { type: 'string' },
+    signature: { type: 'string' }
+  }
+};
+
 interface IStore {
   senderIdentity: string;
   address: string;
@@ -62,15 +109,26 @@ interface IStore {
   addCount: number;
 }
 
+const storeSchema: JTDSchemaType<IStore> = {
+  properties: {
+    senderIdentity: { type: 'string' },
+    address: { type: 'string' },
+    entryBlockLists: { elements: entryBlockListSchema },
+    addCount: { type: 'uint32' }
+  }
+};
+
+const validateStore = ajv.compile(storeSchema);
+
 interface IStoreOptions {
-  address?: string;
-  isPublic?: boolean;
-  entryBlockSize?: number;
-  compactThreshold?: number;
+  address: string;
+  isPublic: boolean;
+  entryBlockSize: number;
+  compactThreshold: number;
 }
 
 const defaultStoreOptions: IStoreOptions = {
-  address: null,
+  address: '',
   isPublic: false,
   entryBlockSize: 16,
   compactThreshold: 128
@@ -79,7 +137,7 @@ const defaultStoreOptions: IStoreOptions = {
 export class DbClient {
   private _ipfs: any;
 
-  constructor(private _swarmAddrs: string | string[] = null) {}
+  constructor(private _swarmAddrs: string | string[] = '') {}
 
   async connect() {
     const swarmAddrs = !this._swarmAddrs ? [] :
@@ -102,7 +160,7 @@ export class DbClient {
     this._ipfs = window['ipfs'] = null;
   }
 
-  async db(name: string): Promise<Db> {
+  async db(name: string): Promise<Db|null> {
     if (!this._ipfs)
       return null;
     const db = new Db(this._ipfs, name);
@@ -122,9 +180,11 @@ export class Db {
 
     const sub = storeJson => {
       const store: IStore = JSON.parse(storeJson.data) as IStore;
-      if (store.senderIdentity == this._identity.id || !this._storeUpdaters.has(store.address))
+      if (store.senderIdentity == this._identity.id || !validateStore(store))
         return;
-      this._storeUpdaters.get(store.address).merge(store.entryBlockLists.sort(byOwnerIdentity));
+      const updater = this._storeUpdaters.get(store.address);
+      if (updater)
+        updater.merge(store.entryBlockLists.sort(byOwnerIdentity));
     };
 
     if (!this._connected) {
@@ -147,8 +207,8 @@ export class Db {
       this._ipfs.pubsub.publish('/db/' + this._name, storeJson);
     };
 
-    const storeUpdater = new DbStoreUpdater(this._ipfs, this._identity, pub);
-    await storeUpdater.init(this._name + '/' + name, options);
+    const storeUpdater = new DbStoreUpdater(this._ipfs, this._identity, pub, options);
+    await storeUpdater.init(this._name + '/' + name);
     this._storeUpdaters.set(storeUpdater.address(), storeUpdater);
 
     return new DbStore(storeUpdater);
@@ -170,32 +230,40 @@ class DbStoreUpdater {
   constructor(
     private _ipfs: any,
     private _identity: any,
-    private _publish: (IStore) => void) {}
-
-  async init(name: string, options: Partial<IStoreOptions>) {
+    private _publish: (IStore) => void,
+    options: Partial<IStoreOptions>) {
     this._options = {...defaultStoreOptions, ...options};
+  }
 
-    let manifest: IStoreManifest;
-    if (options.address) {
-      this._address = options.address;
+  async init(name: string) {
+
+    var manifest;
+    if (this._options.address) {
+      this._address = this._options.address;
       manifest = await ipfsGet<IStoreManifest>(this._ipfs, this._address);
       if (!manifest) {
         console.log('Store address ' + this._address + ' could not be reached');
         return;
       }
+      if (!validateStoreManifest(manifest)) {
+        console.log('Store address ' + this._address + ' refers to invalid manifest');
+        return;
+      }
       this._ownerIdentity = manifest.ownerIdentity;
     }
     else {
-      this._ownerIdentity = options.isPublic ? '*' : this._identity.id;
+      this._ownerIdentity = this._options.isPublic ? '*' : this._identity.id;
       manifest = {name, ownerIdentity: this._ownerIdentity};
       this._address = await ipfsPut(this._ipfs, manifest);
     }
 
     const storeCid = window.localStorage.getItem('/db/' + this._address);
     if (storeCid) {
-      const store: IStore = storeCid ? await ipfsGet<IStore>(this._ipfs, storeCid) : null;
-      this._addCount = store.addCount;
-      await this.merge(store.entryBlockLists);
+      const store = storeCid ? await ipfsGet<IStore>(this._ipfs, storeCid) : null;
+      if (store) {
+        this._addCount = store.addCount;
+        await this.merge(store.entryBlockLists);
+      }
     }
   }
 
@@ -207,8 +275,8 @@ class DbStoreUpdater {
       return;
 
     const entryBlockCids: string[] = mergeArrays(Array.from(this._entryBlockLists.values()).sort(byOwnerIdentity).map(ebl => ebl.entryBlockCids));
-    const entryBlocks: IEntryBlock[] = await Promise.all(entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)));
-    const allEntries: IEntry[] = mergeArrays(entryBlocks.map(eb => eb ? eb.entries : []));
+    const entryBlocks = await Promise.all(entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)));
+    const allEntries: IEntry[] = mergeArrays(entryBlocks.map(eb => eb && validateEntryBlock(eb) ? eb.entries : []));
     this._numEntries = allEntries.length;
 
     allEntries.sort(byClock);
@@ -221,7 +289,8 @@ class DbStoreUpdater {
   }
 
   _canMerge(entryBlockList: IEntryBlockList) {
-    if (this._entryBlockLists.has(entryBlockList.ownerIdentity) && entryBlockList.clock <= this._entryBlockLists.get(entryBlockList.ownerIdentity).clock ||
+    const myEntryBlockList = this._entryBlockLists.get(entryBlockList.ownerIdentity);
+    if (myEntryBlockList && entryBlockList.clock <= myEntryBlockList.clock ||
       this._ownerIdentity != '*' && this._ownerIdentity != entryBlockList.ownerIdentity ||
       !entryBlockList.signature ||
       !entryBlockList.publicKey)
@@ -257,23 +326,34 @@ class DbStoreUpdater {
       this._index.set(obj._id, obj);
     this._numEntries += objs.length;
 
-    if (!this._entryBlockLists.has(this._identity.id))
-      this._entryBlockLists.set(this._identity.id, {
+    var myEntryBlockList: IEntryBlockList;
+    const maybeMyEntryBlockList = this._entryBlockLists.get(this._identity.id);
+    if (maybeMyEntryBlockList) {
+      myEntryBlockList = maybeMyEntryBlockList;
+    }
+    else {
+      myEntryBlockList = {
         ownerIdentity: this._identity.id,
         entryBlockCids: [],
-        clock: null,
+        clock: 0,
         publicKey: this._identity.publicKey,
-        signature: null
-      });
+        signature: ''
+      };
+      this._entryBlockLists.set(this._identity.id, myEntryBlockList);
+    }
 
-    const myEntryBlockList: IEntryBlockList = this._entryBlockLists.get(this._identity.id);
-    const lastBlock: IEntryBlock = myEntryBlockList.entryBlockCids.length > 0 ?
-      await ipfsGet<IEntryBlock>(this._ipfs, myEntryBlockList.entryBlockCids.slice(-1)[0]) : {entries: []};
+    var lastBlock: IEntryBlock = {entries: []};
+    if (myEntryBlockList.entryBlockCids.length > 0) {
+      const maybeLastBlock = await ipfsGet<IEntryBlock>(this._ipfs, myEntryBlockList.entryBlockCids.slice(-1)[0]);
+      if (!maybeLastBlock)
+        return;
+      lastBlock = maybeLastBlock;
+    }
 
     const lastEntries = lastBlock.entries.length != this._options.entryBlockSize ? lastBlock.entries : [];
     let newBlockEntries = [...lastEntries, ...objs.map(obj => ({value: obj, clock: ++this._clock}))];
 
-    const newBlocks = [];
+    const newBlocks: IEntryBlock[] = [];
     while (newBlockEntries.length > 0) {
       newBlocks.push({entries: newBlockEntries.slice(0, this._options.entryBlockSize)});
       newBlockEntries = newBlockEntries.slice(this._options.entryBlockSize);
@@ -289,7 +369,7 @@ class DbStoreUpdater {
     this._addCount += objs.length;
     if (this._addCount >= this._options.compactThreshold) {
       this._addCount %= this._options.compactThreshold;
-      await this._compact();
+      await this._compact(myEntryBlockList);
     }
 
     myEntryBlockList.clock = this._clock;
@@ -299,10 +379,9 @@ class DbStoreUpdater {
     await this._updateStoreCid();
   }
 
-  async _compact() {
-    const myEntryBlockList: IEntryBlockList = this._entryBlockLists.get(this._identity.id);
-    let myEntryBlocks: IEntryBlock[] = await Promise.all(myEntryBlockList.entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)));
-    const myEntries: IEntry[] = mergeArrays(myEntryBlocks.map(eb => eb.entries));
+  async _compact(myEntryBlockList: IEntryBlockList) {
+    let myEntryBlocks = await Promise.all(myEntryBlockList.entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)));
+    const myEntries: IEntry[] = mergeArrays(myEntryBlocks.map(eb => eb ? eb.entries : []));
 
     const myEffectiveEntryMap: Map<string, IEntry> = new Map();
     for (const entry of myEntries)

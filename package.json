@@ -20,6 +20,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "ajv": "^8.11.0",
     "ipfs-pubsub-peer-monitor": "^0.0.10",
     "orbit-db-io": "^1.0.2"
   }

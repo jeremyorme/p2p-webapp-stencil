@@ -2,7 +2,7 @@ import { Business, KeyedBusiness, OtherBusiness } from './business';
 import { DbClient, Db, DbStore } from './db';
 
 // Helper to log time elapsed since previous log
-const logTime = (prev: number = null, name: string = null) => {
+const logTime = (prev: number = 0, name: string = '') => {
   const now = performance.now();
   if (name) console.log('PERF: ' + name + ' = ' + Math.round(now - (prev ? prev : now)) + 'ms');
   return now;
@@ -116,7 +116,12 @@ class Database {
     t = logTime(t);
 
     // Create db instance
-    this.db = await this.dbClient.db('business-directory');
+    const maybeDb = await this.dbClient.db('business-directory');
+    if (!maybeDb) {
+      console.log('Failed to initialise database');
+      return;
+    }
+    this.db = maybeDb;
     t = logTime(t, 'DB');
     
     // Initialize stores
@@ -144,10 +149,14 @@ class Database {
     this.myStore.insertOne({_id: this.key, ...this.business});
   }
 
-  getBusiness(storeId: string, key: string): Business {
+  getBusiness(storeId: string, key: string): Business|null {
     this.key = key;
-    if (this.readonly = !!storeId)
-      return this.businessStores.get(storeId).findOne({_id: key});
+    if (this.readonly = !!storeId) {
+      const maybeStore = this.businessStores.get(storeId);
+      if (!maybeStore)
+        return null;
+      return maybeStore.findOne({_id: key});
+    }
     
     this.business = this.myStore.findOne({_id: this.key});
     return this.business;
@@ -158,7 +167,7 @@ class Database {
   }
 
   getOtherBusinesses(): OtherBusiness[] {
-    const otherBusinesses = [];
+    const otherBusinesses: OtherBusiness[] = [];
     this.businesses.forEach((kbs, id) => kbs.forEach(kb => otherBusinesses.push({id, ...kb})));
     return otherBusinesses;
   }

@@ -10,7 +10,7 @@ import { Business } from '../../data/business';
 })
 export class BusinessDetailPage {
   @Prop() match: MatchResults;
-  @State() business: Business;
+  @State() business: Business|null;
 
   componentWillLoad() {
     this.business = database.getBusiness(this.match?.params?.storeId, this.match?.params?.key);
