@@ -241,14 +241,8 @@ class DbStoreUpdater {
     if (this._options.address) {
       this._address = this._options.address;
       manifest = await ipfsGet<IStoreManifest>(this._ipfs, this._address);
-      if (!manifest) {
-        console.log('Store address ' + this._address + ' could not be reached');
+      if (!this._isStoreManifestValid(manifest))
         return;
-      }
-      if (!validateStoreManifest(manifest)) {
-        console.log('Store address ' + this._address + ' refers to invalid manifest');
-        return;
-      }
       this._ownerIdentity = manifest.ownerIdentity;
     }
     else {
@@ -259,24 +253,43 @@ class DbStoreUpdater {
 
     const storeCid = window.localStorage.getItem('/db/' + this._address);
     if (storeCid) {
-      const store = storeCid ? await ipfsGet<IStore>(this._ipfs, storeCid) : null;
-      if (store) {
-        this._addCount = store.addCount;
-        await this.merge(store.entryBlockLists);
-      }
+      const store = await ipfsGet<IStore>(this._ipfs, storeCid);
+      if (!this._isStoreValid(store) || !store)
+        return;
+      this._addCount = store.addCount;
+      await this.merge(store.entryBlockLists);
     }
   }
 
   async merge(entryBlockLists: IEntryBlockList[]) {
-    entryBlockLists.filter(entryBlockList => this._canMerge(entryBlockList)).forEach(entryBlockList => {
-      this._entryBlockLists.set(entryBlockList.ownerIdentity, entryBlockList);
+
+    // Clone the entry block list map and set any received entry block lists that are new
+    const newEntryBlockLists = new Map(this._entryBlockLists);
+    entryBlockLists.filter(entryBlockList => this._isEntryBlockListNew(entryBlockList)).forEach(entryBlockList => {
+      newEntryBlockLists.set(entryBlockList.ownerIdentity, entryBlockList);
     });
+
+    // Fetch the entry blocks
+    const listsAndBlocks = await Promise.all(Array.from(newEntryBlockLists.values())
+      .sort(byOwnerIdentity)
+      .map(async entryBlockList => ({
+        entryBlockList,
+        entryBlocks: await Promise.all(entryBlockList.entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)))
+      })));
+
+    // Validate the entry blocks being added
+    if (!listsAndBlocks.every(listAndBlock => this._entryBlockLists.has(listAndBlock.entryBlockList.ownerIdentity) ||
+      this._areEntryBlocksValid(listAndBlock.entryBlockList, listAndBlock.entryBlocks)))
+      return false;
+
+    // Set the new entry block lists as current and update the store CID
+    this._entryBlockLists = newEntryBlockLists;
     if (!await this._updateStoreCid())
       return;
 
-    const entryBlockCids: string[] = mergeArrays(Array.from(this._entryBlockLists.values()).sort(byOwnerIdentity).map(ebl => ebl.entryBlockCids));
-    const entryBlocks = await Promise.all(entryBlockCids.map(entryBlockCid => ipfsGet<IEntryBlock>(this._ipfs, entryBlockCid)));
-    const allEntries: IEntry[] = mergeArrays(entryBlocks.map(eb => eb && validateEntryBlock(eb) ? eb.entries : []));
+    // Regenerate the index and update the store clock
+    const entryBlocks: (IEntryBlock|null)[] = mergeArrays(listsAndBlocks.map(lab => lab.entryBlocks));
+    const allEntries: IEntry[] = mergeArrays(entryBlocks.map(entryBlock => entryBlock ? entryBlock.entries : []));
     this._numEntries = allEntries.length;
 
     allEntries.sort(byClock);
@@ -288,16 +301,9 @@ class DbStoreUpdater {
       this._index.set(entry.value._id, entry.value);
   }
 
-  _canMerge(entryBlockList: IEntryBlockList) {
-    const myEntryBlockList = this._entryBlockLists.get(entryBlockList.ownerIdentity);
-    if (myEntryBlockList && entryBlockList.clock <= myEntryBlockList.clock ||
-      this._ownerIdentity != '*' && this._ownerIdentity != entryBlockList.ownerIdentity ||
-      !entryBlockList.signature ||
-      !entryBlockList.publicKey)
-      return false;
-
-    const e = {...entryBlockList, signature: ''};
-    return this._identity.provider.verify(entryBlockList.signature, entryBlockList.publicKey, JSON.stringify(e), 'v1');
+  _isEntryBlockListNew(entryBlockList: IEntryBlockList) {
+    const existingEntryBlockList = this._entryBlockLists.get(entryBlockList.ownerIdentity);
+    return !existingEntryBlockList || entryBlockList.clock > existingEntryBlockList.clock;
   }
 
   async _updateStoreCid() {
@@ -408,6 +414,116 @@ class DbStoreUpdater {
         addCount: this._addCount
       });
   };
+
+  _isStoreManifestValid(manifest: IStoreManifest|null) {
+    // check_exists(IStoreManifest)
+    if (!manifest) {
+      console.log('[Db] ERROR: Manifest not found (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_manifest_syntax(IStoreManifest)
+    if (!validateStoreManifest(manifest)) {
+      console.log('[Db] ERROR: Manifest invalid (address = ' + this._address + ')');
+      return false;
+    }    
+
+    // success!
+    return true;
+  }
+
+  _isStoreValid(store: IStore|null) {
+    // check_exists(IStore)
+    if (!store) {
+      console.log('[Db] ERROR: Store structure not found (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_store_syntax(IStore)
+    if (!validateStore(store)) {
+      console.log('[Db] ERROR: Store structure invalid (address = ' + this._address + ')');
+      return false;
+    }
+
+    return store.entryBlockLists.every(entryBlockList => this._isEntryBlockListValid(entryBlockList));
+  }
+
+  _isEntryBlockListValid(entryBlockList: IEntryBlockList) {
+    // check_num_entry_blocks(IEntryBlockList.entryBlockCids);
+    if (entryBlockList.entryBlockCids.length == 0) {
+      console.log('[Db] WARNING: Empty update was ignored (address = ' + this.address + ')');
+      return false;
+    }
+    
+    // check_has_write_access(IEntryBlockList.ownerIdentity, IStoreManifest.ownerIdentity)
+    if (this._ownerIdentity != '*' && this._ownerIdentity != entryBlockList.ownerIdentity) {
+      console.log('[Db] WARNING: Update containing illegal write was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_signature(IEntryBlockList.publicKey, IEntryBlockList.signature)
+    if (!this._identity.provider.verify(
+      entryBlockList.signature, entryBlockList.publicKey, JSON.stringify({...entryBlockList, signature: ''}), 'v1')) {
+      console.log('[Db] WARNING: Update without valid signature was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // success!
+    return true;
+  }
+
+  _areEntryBlocksValid(entryBlockList: IEntryBlockList, entryBlocks: (IEntryBlock|null)[]) {
+    if (!entryBlocks.every((entryBlock, i) => this._isEntryBlockValid(entryBlock, entryBlockList, i == entryBlockList.entryBlockCids.length - 1)))
+      return false;
+
+    if (!this._areEntriesValid(mergeArrays(entryBlocks.map(entryBlock => entryBlock ? entryBlock.entries : [])), entryBlockList))
+      return false;
+
+    // success!
+    return true;
+  }
+
+  _isEntryBlockValid(entryBlock: IEntryBlock|null, entryBlockList: IEntryBlockList, isLast: boolean) {
+    // check_exists(IEntryBlock)
+    if (!entryBlock) {
+      console.log('[Db] WARNING: Update referencing missing block was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_entry_block_syntax(IEntryBlock)
+    if (!validateEntryBlock(entryBlock)) {
+      console.log('[Db] WARNING: Update containing invalid block was ignore (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_num_entries(IEntryBlock.entries)
+    if (!isLast && entryBlock.entries.length != this._options.entryBlockSize ||
+      isLast && entryBlock.entries.length == 0) {
+      console.log('[Db] WARNING: Update containing block with invalid size was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // success!
+    return true;
+  }
+
+  _areEntriesValid(entries: (IEntry|null)[], entryBlockList: IEntryBlockList) {
+    // check_strictly_increasing(IEntry.clock, IEntry.clock)
+    if (!entries.reduce((p, c) => !p || !c ? null : p.clock < c.clock ? c : null)) {
+      console.log('[Db] WARNING: Update containing non-increasing clocks was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // check_max(IEntryBlockList.clock, IEntry.clock)
+    const lastEntry = entries.slice(-1)[0];
+    if (lastEntry && lastEntry.clock != entryBlockList.clock) {
+      console.log('[Db] WARNING: Update containing incorrect clock was ignored (address = ' + this._address + ')');
+      return false;
+    }
+
+    // success!
+    return true;
+  }
 
   onUpdated(callback: () => void) { this._updatedCallbacks.push(callback); }
   
